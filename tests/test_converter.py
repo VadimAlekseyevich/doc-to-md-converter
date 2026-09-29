@@ -190,3 +190,88 @@ def test_numbered_list_and_escaping(tmp_path: Path) -> None:
     assert "1. First" in text and "1. Second" in text
     assert "\\# not a heading" in text
     assert r"Some \[brackets\] \*star\* and \|pipe\|" in text
+
+
+def test_custom_output_parent_autonames_without_overwriting(tmp_path: Path) -> None:
+    doc = Document()
+    doc.add_paragraph("Отдельное расположение")
+    original = tmp_path / "source" / "lecture.docx"
+    original.parent.mkdir()
+    doc.save(original)
+    destination = tmp_path / "exports with space"
+    destination.mkdir()
+    result1 = convert_docx(original, output_parent=destination)
+    result2 = convert_docx(original, output_parent=destination)
+    assert result1.output_dir == destination / "lecture_md"
+    assert result2.output_dir == destination / "lecture_md_2"
+    assert original.read_bytes()  # Original is still there.
+    assert "Отдельное расположение" in result1.markdown_path.read_text(encoding="utf-8")
+    with pytest.raises(ConversionError, match="Папка для сохранения не найдена"):
+        convert_docx(original, output_parent=tmp_path / "missing")
+    with pytest.raises(ConversionError, match="одновременно"):
+        convert_docx(original, output_dir=tmp_path / "exact", output_parent=destination)
+    assert main([str(original), "--output-parent", str(destination)]) == 0
+    assert (destination / "lecture_md_3/index.md").is_file()
+
+
+def test_footnotes_comments_equations_and_embedded_objects(tmp_path: Path) -> None:
+    from doc_to_md_converter.converter import M, W
+    from lxml import etree
+
+    doc = Document()
+    paragraph = doc.add_paragraph("Основной текст ")
+    note = OxmlElement("w:footnoteReference")
+    note.set(qn("w:id"), "1")
+    paragraph.add_run()._r.append(note)
+    comment = OxmlElement("w:commentReference")
+    comment.set(qn("w:id"), "2")
+    paragraph.add_run()._r.append(comment)
+    math = etree.Element(f"{{{M}}}oMath", nsmap={"m": M})
+    run = etree.SubElement(math, f"{{{M}}}r")
+    value = etree.SubElement(run, f"{{{M}}}t")
+    value.text = "x+2"
+    paragraph._p.append(math)
+    source = tmp_path / "rich.docx"
+    doc.save(source)
+    footnotes = (f'<w:footnotes xmlns:w="{W}"><w:footnote w:id="1">'
+                 '<w:p><w:r><w:t>Содержимое сноски</w:t></w:r></w:p>'
+                 '</w:footnote></w:footnotes>')
+    comments = (f'<w:comments xmlns:w="{W}"><w:comment w:id="2" w:author="Редактор">'
+                '<w:p><w:r><w:t>Содержимое комментария</w:t></w:r></w:p>'
+                '</w:comment></w:comments>')
+    object_data = b"original ole bytes"
+    with ZipFile(source, "a") as archive:
+        archive.writestr("word/footnotes.xml", footnotes)
+        archive.writestr("word/comments.xml", comments)
+        archive.writestr("word/embeddings/oleObject1.bin", object_data)
+    result = convert_docx(source)
+    md = result.markdown_path.read_text(encoding="utf-8")
+    assert "Основной текст" in md
+    assert "[Сноска 1]" in md and "Содержимое сноски" in md
+    assert "[Комментарий 2]" in md and "Содержимое комментария" in md
+    assert "Формула Word: x+2" in md
+    assert "assets/objects/object1.bin" in md
+    assert (result.output_dir / "assets/objects/object1.bin").read_bytes() == object_data
+    assert any("формулы Word" in warning for warning in result.warnings)
+    assert any("OLE" in warning for warning in result.warnings)
+
+
+def test_textbox_text_is_preserved_despite_unsupported_shape(tmp_path: Path) -> None:
+    from lxml import etree
+    from doc_to_md_converter.converter import W
+    doc = Document()
+    paragraph = doc.add_paragraph("До блока. ")
+    drawing = OxmlElement("w:drawing")
+    textbox = etree.SubElement(drawing, f"{{{W}}}txbxContent")
+    p = etree.SubElement(textbox, f"{{{W}}}p")
+    r = etree.SubElement(p, f"{{{W}}}r")
+    t = etree.SubElement(r, f"{{{W}}}t")
+    t.text = "Важная надпись в схеме"
+    paragraph.add_run()._r.append(drawing)
+    source = tmp_path / "textbox.docx"
+    doc.save(source)
+    result = convert_docx(source)
+    md = result.markdown_path.read_text(encoding="utf-8")
+    assert "Важная надпись в схеме" in md
+    assert "Неподдерживаемый графический объект" in md
+    assert any("графического блока" in warning for warning in result.warnings)

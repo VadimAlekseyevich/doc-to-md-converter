@@ -14,18 +14,24 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install "setuptools>=68" wheel -e ".[dev]"
       - run: python -m pytest -q
-      - name: Register, verify and remove per-user DOCX context verb
+      - name: Register, verify and remove per-user DOCX and PDF context verbs
         shell: pwsh
         run: |
           cmd /c install-context-menu.bat
           if ($LASTEXITCODE -ne 0) { throw 'Installation failed' }
-          $key = 'HKCU:\Software\Classes\SystemFileAssociations\.docx\shell\DocToMdConverter\command'
-          $value = (Get-Item $key).GetValue('')
-          if (-not $value.Contains('start.bat') -or -not $value.Contains('"%1"') -or -not $value.Contains('--context-menu')) {
-            throw "Invalid registered command: $value"
+          foreach ($ext in @('.docx', '.pdf')) {
+            $key = "HKCU:\Software\Classes\SystemFileAssociations\$ext\shell\DocToMdConverter\command"
+            $value = (Get-Item $key).GetValue('')
+            if (-not $value.Contains('start.bat') -or -not $value.Contains('"%1"') -or -not $value.Contains('--context-menu')) {
+              throw "Invalid registered command for $ext : $value"
+            }
           }
           cmd /c uninstall-context-menu.bat
-          if ($LASTEXITCODE -ne 0 -or (Test-Path $key)) { throw 'Uninstallation failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Uninstallation failed' }
+          foreach ($ext in @('.docx', '.pdf')) {
+            $key = "HKCU:\Software\Classes\SystemFileAssociations\$ext\shell\DocToMdConverter\command"
+            if (Test-Path $key) { throw "Uninstallation failed for $ext" }
+          }
       - name: First launcher run (offline, reuse installed dependencies)
         shell: cmd
         env:

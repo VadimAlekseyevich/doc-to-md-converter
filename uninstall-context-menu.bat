@@ -1,20 +1,18 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
 chcp 65001 >nul
-set "REGKEY=HKCU\Software\Classes\SystemFileAssociations\.docx\shell\DocToMdConverter"
-reg query "%REGKEY%" >nul 2>nul
-if errorlevel 1 (
-    echo [OK] The context menu is already absent.
-    if not defined CI pause
-    exit /b 0
+rem Remove only this application's user-specific command; do not touch file associations.
+for %%E in (.docx .pdf) do (
+    reg query "HKCU\Software\Classes\SystemFileAssociations\%%E\shell\DocToMdConverter" >nul 2>nul
+    if not errorlevel 1 (
+        reg delete "HKCU\Software\Classes\SystemFileAssociations\%%E\shell\DocToMdConverter" /f >nul
+        if errorlevel 1 goto :error
+    )
 )
-rem Delete only our own verb, never DOCX associations or other apps.
-reg delete "%REGKEY%" /f >nul
-if errorlevel 1 (
-    echo [ERROR] Could not remove the context menu.
-    if not defined CI pause
-    exit /b 1
-)
-echo [OK] DOCX to Markdown context menu removed.
+echo [OK] DOCX/PDF to Markdown context menu removed.
 if not defined CI pause
 exit /b 0
+:error
+echo [ERROR] Could not remove the DOCX/PDF context menu.
+if not defined CI pause
+exit /b 1

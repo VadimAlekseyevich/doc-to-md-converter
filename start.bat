@@ -4,6 +4,10 @@ rem Display Russian file paths and Python CLI output on Windows consoles.
 chcp 65001 >nul
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
+rem Slow or unstable access to pypi.org should not fail on pip's 15-second default.
+rem Respect any user-configured pip timeout and retry settings.
+if not defined PIP_DEFAULT_TIMEOUT set "PIP_DEFAULT_TIMEOUT=60"
+if not defined PIP_RETRIES set "PIP_RETRIES=2"
 cd /d "%~dp0"
 if errorlevel 1 goto :error
 
@@ -21,6 +25,7 @@ if not defined PYTHON goto :missing_python
 
 :python_ready
 echo [Setup] Python found.
+echo [Setup] Download timeout: %PIP_DEFAULT_TIMEOUT%s, retries: %PIP_RETRIES%.
 set "VENV=.venv"
 if exist "%VENV%\Scripts\python.exe" (
     "%VENV%\Scripts\python.exe" -c "import sys; assert sys.version_info >= (3,11)" >nul 2>nul
@@ -46,26 +51,17 @@ rem Install ONLY missing or incompatible libraries. The venv reuses system packa
 if errorlevel 1 (
     echo [Setup] Installing python-docx...
     "%VPY%" -m pip install --disable-pip-version-check "python-docx>=1.1,<2"
-    if errorlevel 1 goto :error
+    if errorlevel 1 goto :download_error
 )
 "%VPY%" -c "from importlib.metadata import version; import re; v=tuple(map(int,re.match(r'^(\d+)\.(\d+)',version('lxml')).groups())); assert (4,9) <= v < (7,0)" >nul 2>nul
 if errorlevel 1 (
     echo [Setup] Installing lxml...
     "%VPY%" -m pip install --disable-pip-version-check "lxml>=4.9,<7"
-    if errorlevel 1 goto :error
-)
-"%VPY%" -c "from importlib.metadata import version; import re; v=int(re.match(r'^\d+',version('setuptools')).group()); assert v >= 68; version('wheel')" >nul 2>nul
-if errorlevel 1 (
-    echo [Setup] Installing local build tools...
-    "%VPY%" -m pip install --disable-pip-version-check "setuptools>=68" wheel
-    if errorlevel 1 goto :error
+    if errorlevel 1 goto :download_error
 )
 
-rem Rebuild from local source without dependency downloads or build isolation.
-echo [Setup] Building the application...
-"%VPY%" -m pip install --quiet --disable-pip-version-check --no-deps --no-build-isolation -e .
-if errorlevel 1 goto :error
-
+rem Python can run a package directly from this folder. An editable installation
+rem would unnecessarily download build tools (setuptools/wheel) on first launch.
 if not "%~1"=="" goto :launch
 "%VPY%" -c "import tkinter" >nul 2>nul
 if errorlevel 1 (
@@ -109,6 +105,14 @@ goto :error
 
 :venv_error
 echo [ERROR] An incompatible virtual environment was found. Remove .venv-win and retry.
+goto :error
+
+:download_error
+echo [ERROR] Could not install a required Python library.
+echo [ERROR] pip may be unable to access pypi.org due to a slow connection, firewall, or proxy.
+echo [ERROR] Check your Internet access and VPN/proxy settings, then run start.bat again.
+echo [ERROR] If your network uses a package mirror, configure PIP_INDEX_URL.
+echo [ERROR] Already installed compatible libraries will be reused on the next run.
 goto :error
 
 :error

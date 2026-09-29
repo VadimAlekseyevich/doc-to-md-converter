@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .converter import ConversionError, convert_docx
+from .converter import ConversionError, convert_document
 
 
 def _notify_context_result(title: str, message: str, *, error: bool = False) -> None:
@@ -35,8 +35,8 @@ def _notify_context_result(title: str, message: str, *, error: bool = False) -> 
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Конвертация DOCX в Markdown с исходными изображениями")
-    parser.add_argument("file", nargs="?", help="Путь к файлу .docx (без аргумента открывается окно)")
+    parser = argparse.ArgumentParser(description="Конвертация DOCX и PDF в Markdown с изображениями, без OCR")
+    parser.add_argument("file", nargs="?", help="Путь к файлу .docx или .pdf (без аргумента открывается окно)")
     parser.add_argument("--context-menu", action="store_true", help=argparse.SUPPRESS)
     destination = parser.add_mutually_exclusive_group()
     destination.add_argument("--output", help="Точный путь к новой папке результата (не перезаписывается)")
@@ -54,13 +54,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        result = convert_docx(args.file, output_dir=args.output, output_parent=args.output_parent, progress=print)
+        result = convert_document(args.file, output_dir=args.output, output_parent=args.output_parent, progress=print)
     except (ConversionError, OSError) as exc:
         print(f"Ошибка: {exc}", file=sys.stderr)
         if args.context_menu:
-            _notify_context_result("DOCX → Markdown: ошибка", str(exc), error=True)
+            _notify_context_result("DOCX/PDF → Markdown: ошибка", str(exc), error=True)
         return 1
     print(f"Готово: {result.markdown_path}")
     if args.context_menu:
-        _notify_context_result("DOCX → Markdown", f"Конвертация завершена.\n\nРезультат:\n{result.output_dir}")
+        _notify_context_result("DOCX/PDF → Markdown", f"Конвертация завершена.\n\nРезультат:\n{result.output_dir}")
     return 0

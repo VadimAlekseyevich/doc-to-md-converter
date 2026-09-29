@@ -584,3 +584,25 @@ def convert_docx(
     finally:
         if temp.exists():
             shutil.rmtree(temp)
+
+def convert_document(
+    source: str | Path,
+    output_dir: str | Path | None = None,
+    progress: Callable[[str], None] | None = None,
+    *,
+    output_parent: str | Path | None = None,
+) -> ConversionResult:
+    """Dispatch DOCX or PDF conversion while preserving the same export interface."""
+    suffix = Path(source).suffix.lower()
+    if suffix == ".docx":
+        return convert_docx(source, output_dir=output_dir, progress=progress, output_parent=output_parent)
+    if suffix == ".pdf":
+        try:
+            from .pdf_converter import convert_pdf
+        except ImportError as exc:
+            raise ConversionError(
+                "Для обработки PDF необходимы pypdfium2 и Pillow. "
+                "Подключите интернет и повторно запустите start.bat."
+            ) from exc
+        return convert_pdf(source, output_dir=output_dir, progress=progress, output_parent=output_parent)
+    raise ConversionError("Выберите файл с расширением .docx или .pdf")

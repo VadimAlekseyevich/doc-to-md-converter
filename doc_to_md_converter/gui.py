@@ -9,7 +9,7 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 from tkinter.scrolledtext import ScrolledText
 
-from .converter import convert_docx
+from .converter import convert_document
 
 
 def launch() -> None:
@@ -18,7 +18,7 @@ def launch() -> None:
     except tk.TclError as exc:
         raise RuntimeError("нет доступного графического дисплея; используйте CLI с путём к DOCX") from exc
 
-    root.title("DOCX → Markdown")
+    root.title("DOCX / PDF → Markdown")
     root.geometry("780x480")
     root.minsize(600, 360)
     path = tk.StringVar()
@@ -27,14 +27,14 @@ def launch() -> None:
 
     outer = ttk.Frame(root, padding=16)
     outer.pack(fill="both", expand=True)
-    ttk.Label(outer, text="Исходный файл DOCX:").pack(anchor="w")
+    ttk.Label(outer, text="Исходный файл DOCX или PDF:").pack(anchor="w")
     selector = ttk.Frame(outer)
     selector.pack(fill="x", pady=(5, 10))
     entry = ttk.Entry(selector, textvariable=path)
     entry.pack(side="left", fill="x", expand=True)
 
     def choose() -> None:
-        selected = filedialog.askopenfilename(filetypes=[("Word document", "*.docx")])
+        selected = filedialog.askopenfilename(filetypes=[("Документы DOCX и PDF", ("*.docx", "*.pdf")), ("Word DOCX", "*.docx"), ("PDF", "*.pdf")])
         if selected:
             path.set(selected)
 
@@ -70,7 +70,7 @@ def launch() -> None:
 
     def worker(file_name: str, parent_name: str) -> None:
         try:
-            result = convert_docx(file_name, output_parent=parent_name or None,
+            result = convert_document(file_name, output_parent=parent_name or None,
                                   progress=lambda msg: events.put(("log", msg)))
             events.put(("done", f"Готово: {result.output_dir}"))
         except Exception as exc:  # Show unexpected failures in the GUI as well.
@@ -80,7 +80,7 @@ def launch() -> None:
         file_name = path.get().strip().strip('"')
         parent_name = output_parent.get().strip().strip('"')
         if not file_name:
-            append("Ошибка: укажите путь к DOCX.")
+            append("Ошибка: укажите путь к DOCX или PDF.")
             return
         log.configure(state="normal")
         log.delete("1.0", "end")

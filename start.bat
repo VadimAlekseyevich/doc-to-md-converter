@@ -11,7 +11,7 @@ if not defined PIP_RETRIES set "PIP_RETRIES=2"
 cd /d "%~dp0"
 if errorlevel 1 goto :error
 
-echo [DOCX to Markdown] Checking Python...
+echo [DOCX/PDF to Markdown] Checking Python...
 call :find_python
 if defined PYTHON goto :python_ready
 
@@ -51,7 +51,12 @@ rem Install ONLY missing or incompatible libraries. The venv reuses system packa
 if errorlevel 1 (
     echo [Setup] Installing python-docx...
     "%VPY%" -m pip install --disable-pip-version-check "python-docx>=1.1,<2"
-    if errorlevel 1 goto :download_error
+    if errorlevel 1 goto :pdf_download_error
+echo [WARN] PDF dependency installation failed. DOCX conversion remains available.
+if /I "%~x1"==".pdf" goto :download_error
+goto :pdf_dependencies_done
+
+:download_error
 )
 "%VPY%" -c "from importlib.metadata import version; import re; v=tuple(map(int,re.match(r'^(\d+)\.(\d+)',version('lxml')).groups())); assert (4,9) <= v < (7,0)" >nul 2>nul
 if errorlevel 1 (
@@ -59,6 +64,21 @@ if errorlevel 1 (
     "%VPY%" -m pip install --disable-pip-version-check "lxml>=4.9,<7"
     if errorlevel 1 goto :download_error
 )
+
+rem PDF dependencies: check before downloading, just as for DOCX.
+"%VPY%" -c "from importlib.metadata import version; import re; v=tuple(map(int,re.match(r'^(\d+)\.(\d+)',version('pypdfium2')).groups())); assert (4,30) <= v < (6,0); import pypdfium2" >nul 2>nul
+if errorlevel 1 (
+    echo [Setup] Installing PDF library pypdfium2...
+    "%VPY%" -m pip install --disable-pip-version-check "pypdfium2>=4.30,<6"
+    if errorlevel 1 goto :pdf_download_error
+)
+"%VPY%" -c "from importlib.metadata import version; import re; v=tuple(map(int,re.match(r'^(\d+)\.(\d+)',version('Pillow')).groups())); assert (10,0) <= v < (13,0); import PIL" >nul 2>nul
+if errorlevel 1 (
+    echo [Setup] Installing PDF image library Pillow...
+    "%VPY%" -m pip install --disable-pip-version-check "Pillow>=10,<13"
+    if errorlevel 1 goto :pdf_download_error
+)
+:pdf_dependencies_done
 
 rem Python can run a package directly from this folder. An editable installation
 rem would unnecessarily download build tools (setuptools/wheel) on first launch.

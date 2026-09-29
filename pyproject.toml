@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "doc-to-md-converter"
+version = "0.1.0"
+description = "Convert DOCX handouts to GitHub-readable Markdown with original images"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "python-docx>=1.1,<2",
+    "lxml>=4.9,<7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+docx-to-md = "doc_to_md_converter.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["doc_to_md_converter*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

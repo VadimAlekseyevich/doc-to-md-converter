@@ -77,14 +77,14 @@ exit /b 0
 
 :find_python
 set "PYTHON="
-py -3 -c "import sys; assert sys.version_info >= (3,11)" >nul 2>nul
-if not errorlevel 1 (
-    set "PYTHON=py -3"
-    exit /b 0
-)
 python -c "import sys; assert sys.version_info >= (3,11)" >nul 2>nul
 if not errorlevel 1 (
     set "PYTHON=python"
+    exit /b 0
+)
+py -3 -c "import sys; assert sys.version_info >= (3,11)" >nul 2>nul
+if not errorlevel 1 (
+    set "PYTHON=py -3"
     exit /b 0
 )
 for %%P in ("%LOCALAPPDATA%\Programs\Python\Python313\python.exe" "%ProgramFiles%\Python313\python.exe" "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" "%LOCALAPPDATA%\Programs\Python\Python311\python.exe") do (

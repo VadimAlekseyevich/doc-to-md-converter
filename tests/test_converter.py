@@ -275,3 +275,23 @@ def test_textbox_text_is_preserved_despite_unsupported_shape(tmp_path: Path) -> 
     assert "Важная надпись в схеме" in md
     assert "Неподдерживаемый графический объект" in md
     assert any("графического блока" in warning for warning in result.warnings)
+
+
+def test_package_absolute_image_relationship_is_supported(tmp_path: Path) -> None:
+    doc = Document()
+    image_data = png((17, 33, 99))
+    picture(doc.add_paragraph(), image_data)
+    source = tmp_path / "absolute-target.docx"
+    doc.save(source)
+    with ZipFile(source) as archive:
+        members = {name: archive.read(name) for name in archive.namelist()}
+    rels = "word/_rels/document.xml.rels"
+    assert b'Target="media/image1.png"' in members[rels]
+    members[rels] = members[rels].replace(b'Target="media/image1.png"', b'Target="/word/media/image1.png"')
+    with ZipFile(source, "w") as archive:
+        for name, data in members.items():
+            archive.writestr(name, data)
+    result = convert_docx(source)
+    assert result.images_count == 1
+    assert (result.output_dir / "assets/images/image1.png").read_bytes() == image_data
+    assert "assets/images/image1.png" in result.markdown_path.read_text(encoding="utf-8")

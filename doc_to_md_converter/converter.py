@@ -155,7 +155,10 @@ class _Converter:
         return relations
 
     def resolve(self, part: str, target: str) -> str | None:
-        member = posixpath.normpath(posixpath.join(posixpath.dirname(part), target.replace("\\", "/")))
+        normalized = target.replace("\\", "/")
+        # OOXML permits both relative targets and package-absolute /word/media/... URLs.
+        member = (posixpath.normpath(normalized.lstrip("/")) if normalized.startswith("/") else
+                  posixpath.normpath(posixpath.join(posixpath.dirname(part), normalized)))
         if member.startswith("../") or member.startswith("/") or member == "..":
             self.warn_once("unsafe-path", "Обнаружена небезопасная ссылка на ресурс внутри DOCX.")
             return None

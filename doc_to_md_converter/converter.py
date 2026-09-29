@@ -50,6 +50,26 @@ def safe_url(url: str) -> str:
     return quote(url, safe="/:#?&=%+@;,$!~*'-._")
 
 
+def short_image_alt(value: str) -> str:
+    """Prevent local document paths in Word's descr/title metadata leaking into Markdown.
+
+    A DOCX can store the original picture path in wp:docPr/@descr, even though
+    the real image is embedded. Only the alt text is cleaned; image bytes and
+    relative Markdown URLs stay untouched.
+    """
+    text = re.sub(r"[\x00-\x1f\x7f]+", " ", value).strip().strip('"\'')
+    if not text:
+        return "Изображение"
+    normalized = text.replace("\\", "/")
+    looks_like_path = bool(
+        re.match(r"(?i)^(?:[a-z]:/|file:/|/|\.\.?/)", normalized)
+        or ("/" in normalized and re.search(r"(?i)\.(?:png|jpe?g|gif|bmp|svg|emf|wmf|tiff?|webp)$", normalized))
+    )
+    if looks_like_path:
+        text = normalized.rstrip("/").rsplit("/", 1)[-1]
+    return text or "Изображение"
+
+
 @dataclass(frozen=True)
 class ConversionResult:
     output_dir: Path
@@ -192,6 +212,7 @@ class _Converter:
             self.log("WARN", f"Не найдена связь изображения {rid} в {part}")
             return "[Отсутствует изображение]"
         kind, target, mode = relation
+        alt = short_image_alt(alt)
         if not kind.endswith(REL_IMAGE):
             self.log("WARN", f"Связь {rid} не является изображением: {kind}")
             return "[Неподдерживаемый ресурс]"

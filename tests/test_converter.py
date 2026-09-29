@@ -295,3 +295,57 @@ def test_package_absolute_image_relationship_is_supported(tmp_path: Path) -> Non
     assert result.images_count == 1
     assert (result.output_dir / "assets/images/image1.png").read_bytes() == image_data
     assert "assets/images/image1.png" in result.markdown_path.read_text(encoding="utf-8")
+
+
+def test_private_windows_image_path_is_not_exported_as_alt_text(tmp_path: Path) -> None:
+    doc = Document()
+    image_data = png((31, 42, 53))
+    paragraph = doc.add_paragraph()
+    picture(paragraph, image_data)
+    picture_properties = paragraph._p.xpath(".//wp:docPr")[0]
+    picture_properties.set("descr", r"C:\Users\lizaa\Desktop\radick\4 kurs\диаграммы\UseCase_AS_IS.jpg")
+    source = tmp_path / "figure.docx"
+    doc.save(source)
+    result = convert_docx(source)
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert r"C:\Users" not in markdown
+    assert "radick" not in markdown
+    assert r"![UseCase\_AS\_IS.jpg](assets/images/image1.png)" in markdown
+    assert (result.output_dir / "assets/images/image1.png").read_bytes() == image_data
+
+
+@pytest.mark.parametrize(
+    ("description", "expected"),
+    [
+        ("Схема работы", "Схема работы"),
+        (r"C:\Users\Public\Pictures\diagram.png", "diagram.png"),
+        ("/home/user/pictures/chart.jpeg", "chart.jpeg"),
+        (r"..\images\photo.png", "photo.png"),
+        ("file:///C:/Users/Public/pic.jpg", "pic.jpg"),
+        ("", "Изображение"),
+    ],
+)
+def test_image_description_removes_paths_but_keeps_real_captions(description: str, expected: str) -> None:
+    from doc_to_md_converter.converter import short_image_alt
+    assert short_image_alt(description) == expected
+
+
+def test_explorer_conversion_returns_feedback_without_keeping_gui_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from doc_to_md_converter import cli
+
+    messages: list[tuple[str, str, bool]] = []
+    monkeypatch.setattr(cli, "_notify_context_result",
+                        lambda title, message, *, error=False: messages.append((title, message, error)))
+    doc = Document()
+    doc.add_paragraph("Запуск из меню")
+    source = tmp_path / "отчёт.docx"
+    doc.save(source)
+    assert main([str(source), "--context-menu"]) == 0
+    assert (tmp_path / "отчёт_md" / "index.md").is_file()
+    assert len(messages) == 1 and messages[0][2] is False
+    assert str(tmp_path / "отчёт_md") in messages[0][1]
+    messages.clear()
+    assert main([str(tmp_path / "missing.docx"), "--context-menu"]) == 1
+    assert len(messages) == 1 and messages[0][2] is True

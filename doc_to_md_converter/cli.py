@@ -8,16 +8,38 @@ import sys
 from .converter import ConversionError, convert_docx
 
 
+def _notify_context_result(title: str, message: str, *, error: bool = False) -> None:
+    """Show a short-lived dialog for Explorer integration; no resident process."""
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+        root = tk.Tk()
+    except (ImportError, tk.TclError) as exc:
+        print(f"{title}: {message} (диалог недоступен: {exc})",
+              file=sys.stderr if error else sys.stdout)
+        return
+    try:
+        root.withdraw()
+        root.attributes("-topmost", True)
+        if error:
+            messagebox.showerror(title, message, parent=root)
+        else:
+            messagebox.showinfo(title, message, parent=root)
+    finally:
+        root.destroy()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Конвертация DOCX в Markdown с исходными изображениями")
     parser.add_argument("file", nargs="?", help="Путь к файлу .docx (без аргумента открывается окно)")
+    parser.add_argument("--context-menu", action="store_true", help=argparse.SUPPRESS)
     destination = parser.add_mutually_exclusive_group()
     destination.add_argument("--output", help="Точный путь к новой папке результата (не перезаписывается)")
     destination.add_argument("--output-parent", help="Существующая папка, внутри которой создать <имя_docx>_md")
     args = parser.parse_args(argv)
     if not args.file:
-        if args.output or args.output_parent:
-            parser.error("--output и --output-parent требуют указания DOCX-файла")
+        if args.output or args.output_parent or args.context_menu:
+            parser.error("--output, --output-parent и --context-menu требуют указания DOCX-файла")
         try:
             from .gui import launch
             launch()
@@ -30,6 +52,10 @@ def main(argv: list[str] | None = None) -> int:
         result = convert_docx(args.file, output_dir=args.output, output_parent=args.output_parent, progress=print)
     except (ConversionError, OSError) as exc:
         print(f"Ошибка: {exc}", file=sys.stderr)
+        if args.context_menu:
+            _notify_context_result("DOCX → Markdown: ошибка", str(exc), error=True)
         return 1
     print(f"Готово: {result.markdown_path}")
+    if args.context_menu:
+        _notify_context_result("DOCX → Markdown", f"Конвертация завершена.\n\nРезультат:\n{result.output_dir}")
     return 0

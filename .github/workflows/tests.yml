@@ -14,6 +14,18 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install "setuptools>=68" wheel -e ".[dev]"
       - run: python -m pytest -q
+      - name: Register, verify and remove per-user DOCX context verb
+        shell: pwsh
+        run: |
+          cmd /c install-context-menu.bat
+          if ($LASTEXITCODE -ne 0) { throw 'Installation failed' }
+          $key = 'HKCU:\Software\Classes\SystemFileAssociations\.docx\shell\DocToMdConverter\command'
+          $value = (Get-Item $key).GetValue('')
+          if (-not $value.Contains('start.bat') -or -not $value.Contains('"%1"') -or -not $value.Contains('--context-menu')) {
+            throw "Invalid registered command: $value"
+          }
+          cmd /c uninstall-context-menu.bat
+          if ($LASTEXITCODE -ne 0 -or (Test-Path $key)) { throw 'Uninstallation failed' }
       - name: First launcher run (offline, reuse installed dependencies)
         shell: cmd
         env:

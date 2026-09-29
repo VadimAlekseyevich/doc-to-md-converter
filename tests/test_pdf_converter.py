@@ -139,7 +139,7 @@ def test_pdf_blank_page_creates_no_image_or_snapshot(tmp_path: Path) -> None:
     canvas.save()
     result = convert_pdf(path)
     markdown = result.markdown_path.read_text(encoding="utf-8")
-    assert "Нет извлекаемого текста или изображений" in markdown
+    assert "На странице нет извлекаемого текста или изображений" in markdown
     assert "assets/pages/" not in markdown
     assert not (result.output_dir / "assets/pages").exists()
     assert result.images_count == 0

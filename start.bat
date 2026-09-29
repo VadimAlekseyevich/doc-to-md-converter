@@ -51,12 +51,7 @@ rem Install ONLY missing or incompatible libraries. The venv reuses system packa
 if errorlevel 1 (
     echo [Setup] Installing python-docx...
     "%VPY%" -m pip install --disable-pip-version-check "python-docx>=1.1,<2"
-    if errorlevel 1 goto :pdf_download_error
-echo [WARN] PDF dependency installation failed. DOCX conversion remains available.
-if /I "%~x1"==".pdf" goto :download_error
-goto :pdf_dependencies_done
-
-:download_error
+    if errorlevel 1 goto :download_error
 )
 "%VPY%" -c "from importlib.metadata import version; import re; v=tuple(map(int,re.match(r'^(\d+)\.(\d+)',version('lxml')).groups())); assert (4,9) <= v < (7,0)" >nul 2>nul
 if errorlevel 1 (
@@ -90,7 +85,7 @@ if errorlevel 1 (
 )
 
 :launch
-echo [Setup] Starting DOCX to Markdown...
+echo [Setup] Starting DOCX/PDF to Markdown...
 "%VPY%" -m doc_to_md_converter %*
 if errorlevel 1 goto :error
 exit /b 0
@@ -126,6 +121,11 @@ goto :error
 :venv_error
 echo [ERROR] An incompatible virtual environment was found. Remove .venv-win and retry.
 goto :error
+
+:pdf_download_error
+echo [WARN] PDF dependency installation failed. DOCX conversion remains available.
+if /I "%~x1"==".pdf" goto :download_error
+goto :pdf_dependencies_done
 
 :download_error
 echo [ERROR] Could not install a required Python library.

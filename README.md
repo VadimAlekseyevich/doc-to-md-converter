@@ -13,7 +13,7 @@
 Для запуска через командную строку, если понадобится:
 
 ```bat
-start.bat "C:\\Docs\\method.docx" --output-parent "C:\\Exports"
+start.bat "C:\Docs\method.docx" --output-parent "C:\Exports"
 ```
 
 ## Ручная установка и запуск

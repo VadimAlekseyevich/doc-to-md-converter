@@ -34,7 +34,7 @@ def make_pdf(path: Path, jpg: bytes, *, pages: int = 2, vector: bool = True) -> 
     canvas.save()
 
 
-def test_pdf_text_images_multi_page_and_vector_preview(tmp_path: Path) -> None:
+def test_pdf_text_images_multi_page_without_duplicate_snapshot(tmp_path: Path) -> None:
     jpg = jpeg()
     path = tmp_path / "study material.pdf"
     make_pdf(path, jpg)
@@ -46,11 +46,9 @@ def test_pdf_text_images_multi_page_and_vector_preview(tmp_path: Path) -> None:
     assert result.images_count == 1  # A reused PDF image is exported once.
     assert markdown.count("(assets/images/image1.jpeg)") == 2
     assert (result.output_dir / "assets/images/image1.jpeg").read_bytes() == jpg
-    assert "[Визуальная копия страницы 1](assets/pages/page1.png)" in markdown
-    assert (result.output_dir / "assets/pages/page1.png").is_file()
-    with Image.open(result.output_dir / "assets/pages/page1.png") as preview:
-        assert preview.size[0] > 400
-    assert not (result.output_dir / "assets/pages/page2.png").exists()
+    assert "Визуальная копия" not in markdown
+    assert not (result.output_dir / "assets/pages").exists()
+    assert any("векторные элементы не переносятся" in message for message in result.warnings)
     assert any("OCR не выполняется" in message for message in result.warnings)
     assert "Готово" in result.log_path.read_text(encoding="utf-8")
 
@@ -116,3 +114,32 @@ def test_pdf_vector_only_page_retains_visual_snapshot(tmp_path: Path) -> None:
     assert "assets/pages/page1.png" in md
     assert (result.output_dir / "assets/pages/page1.png").stat().st_size > 0
     assert any("OCR не выполняется" in w for w in result.warnings)
+
+
+
+def test_pdf_text_and_vector_only_does_not_duplicate_page(tmp_path: Path) -> None:
+    path = tmp_path / "text-and-vector.pdf"
+    canvas = Canvas(str(path), pagesize=(300, 200))
+    canvas.drawString(20, 170, "Actual editable text")
+    canvas.line(20, 20, 280, 120)
+    canvas.showPage()
+    canvas.save()
+    result = convert_pdf(path)
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "Actual editable text" in markdown
+    assert "assets/pages/" not in markdown
+    assert not (result.output_dir / "assets/pages").exists()
+    assert any("векторные элементы не переносятся" in w for w in result.warnings)
+
+
+def test_pdf_blank_page_creates_no_image_or_snapshot(tmp_path: Path) -> None:
+    path = tmp_path / "blank.pdf"
+    canvas = Canvas(str(path), pagesize=(300, 200))
+    canvas.showPage()
+    canvas.save()
+    result = convert_pdf(path)
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "Нет извлекаемого текста или изображений" in markdown
+    assert "assets/pages/" not in markdown
+    assert not (result.output_dir / "assets/pages").exists()
+    assert result.images_count == 0

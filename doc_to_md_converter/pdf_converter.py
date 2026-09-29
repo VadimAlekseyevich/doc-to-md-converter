@@ -2,7 +2,8 @@
 
 The PDF format has no reliable semantic headings/table structure. We keep page
 boundaries, extract its selectable text and visible image objects in rough
-reading order, and save page previews for vector drawing content.
+reading order. Full-page previews are reserved for vector-only pages with no
+extractable text or independent images.
 """
 from __future__ import annotations
 
@@ -78,7 +79,9 @@ def convert_pdf(
     """Export PDF text and image objects without OCR, never overwriting existing output.
 
     JPEG / JPEG2000 image payloads are copied where PDFium allows. Other PDF
-    image encodings may need a PNG fallback; vector drawings receive page previews.
+    image encodings may need a PNG fallback. Pages with extractable text/images
+    never receive redundant full-page PNGs. Vector-only pages get a fallback
+    preview so their otherwise unextractable contents are not lost.
     """
     original = Path(source).expanduser().resolve()
     if original.suffix.lower() != ".pdf":
@@ -172,9 +175,9 @@ def convert_pdf(
                 body = _page_markdown(objects)
                 if not text_count:
                     log("WARN", f"Страница {page_index + 1}: нет извлекаемого текстового слоя; OCR не выполняется.")
-                if vectors or not objects:
-                    # Rasterize only when no stand-alone bitmap represents visual content.
-                    # This preserves vector charts/lines/tables without claiming OCR.
+                if vectors and not objects:
+                    # No text/image payload exists to describe this page: preserve
+                    # otherwise lost vector content. Never duplicate mixed pages.
                     previews = temp / "assets" / "pages"
                     previews.mkdir(parents=True, exist_ok=True)
                     relative = f"assets/pages/page{page_index + 1}.png"
@@ -185,6 +188,9 @@ def convert_pdf(
                         bitmap.close()
                     body += ("\n\n" if body else "") + f"[Визуальная копия страницы {page_index + 1}]({relative})"
                     log("INFO", f"Страница {page_index + 1}: сохранена визуальная копия {relative}")
+                elif vectors:
+                    log("WARN", f"Страница {page_index + 1}: векторные элементы не переносятся в Markdown; "
+                        "отдельная копия страницы не создана во избежание дублирования содержимого.")
                 if not body:
                     body = "<!-- На странице нет извлекаемого текста или изображений -->"
                 pages_md.append(f"## Страница {page_index + 1}\n\n{body}")

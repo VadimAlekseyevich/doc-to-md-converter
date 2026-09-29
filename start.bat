@@ -1,5 +1,9 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
+rem Display Russian file paths and Python CLI output on Windows consoles.
+chcp 65001 >nul
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 cd /d "%~dp0"
 if errorlevel 1 goto :error
 

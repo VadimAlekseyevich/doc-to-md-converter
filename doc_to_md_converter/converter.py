@@ -26,7 +26,8 @@ PR = "http://schemas.openxmlformats.org/package/2006/relationships"
 A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 V = "urn:schemas-microsoft-com:vml"
 WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
-NS = {"w": W, "r": R, "a": A, "v": V, "wp": WP}
+M = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+NS = {"w": W, "r": R, "a": A, "v": V, "wp": WP, "m": M}
 XML = etree.XMLParser(resolve_entities=False, no_network=True)
 REL_IMAGE = "/image"
 
@@ -213,12 +214,21 @@ class _Converter:
             if rid and rid not in seen:
                 seen.add(rid)
                 images.append(self.image(part, rid, alt))
+        textbox = node.find(".//w:txbxContent", NS)
+        extra = self.blocks(textbox, part) if textbox is not None else ""
+        if textbox is not None:
+            self.warn_once("textbox", "Текст графического блока перенесён, но исходное оформление/позиционирование не сохраняется.")
         if not images:
             self.warn_once("unsupported-drawing", "Найдены фигура, диаграмма или объект Word без извлекаемой картинки; он не может быть точно представлен в Markdown.")
-            return "[Неподдерживаемый графический объект Word]"
-        if node.find(".//w:txbxContent", NS) is not None:
-            self.warn_once("textbox", "Текст внутри графических текстовых блоков (text box) не поддерживается полностью.")
+            images.append("[Неподдерживаемый графический объект Word]")
+        if extra:
+            images.append(f"[Текст графического блока: {extra}]")
         return " ".join(images)
+
+    def math(self, node: etree._Element) -> str:
+        self.warn_once("math", "Обнаружены формулы Word: математическое оформление не переносится; текст формулы сохранён в квадратных скобках.")
+        value = "".join(node.xpath(".//m:t/text()", namespaces=NS))
+        return f"[Формула Word: {escape(value)}]" if value else "[Формула Word: не преобразована]"
 
     def formatted(self, raw: str, run: etree._Element) -> str:
         if not raw:
@@ -251,8 +261,10 @@ class _Converter:
                 text.clear()
 
         for child in node:
-            if child.tag in {q(W, "t"), q(W, "delText")}:
+            if child.tag == q(W, "t"):
                 text.append(child.text or "")
+            elif child.tag == q(W, "delText"):
+                self.warn_once("tracked", "Найдены отслеживаемые изменения: удалённый текст пропущен.")
             elif child.tag == q(W, "tab"):
                 text.append("    ")
             elif child.tag in {q(W, "br"), q(W, "cr")}:
@@ -263,7 +275,16 @@ class _Converter:
                 flush()
                 chunks.append(self.draw(child, part))
             elif child.tag in {q(W, "footnoteReference"), q(W, "endnoteReference")}:
-                self.warn_once("notes", "Сноски/концевые сноски не перенесены в Markdown; проверьте оригинал DOCX.")
+                flush()
+                note_id = attribute(child, "id") or "?"
+                kind = "Сноска" if child.tag == q(W, "footnoteReference") else "Концевая сноска"
+                chunks.append(f"[{kind} {escape(note_id)}]")
+            elif child.tag == q(W, "commentReference"):
+                flush()
+                chunks.append(f"[Комментарий {escape(attribute(child, 'id') or '?')}]")
+            elif child.tag in {q(M, "oMath"), q(M, "oMathPara")}:
+                flush()
+                chunks.append(self.math(child))
             elif child.tag == q(W, "sym"):
                 self.warn_once("symbols", "Word-символы из нестандартных шрифтов могут быть не воспроизведены.")
         flush()
@@ -291,8 +312,8 @@ class _Converter:
                 self.warn_once("tracked", "Документ содержит отслеживаемые изменения: взят видимый добавленный текст, удалённый пропущен.")
             elif child.tag in {q(W, "drawing"), q(W, "pict"), q(W, "object")}:
                 pieces.append(self.draw(child, part))
-            elif child.tag == q(W, "commentRangeStart"):
-                self.warn_once("comments", "Комментарии Word не перенесены в Markdown.")
+            elif child.tag in {q(M, "oMath"), q(M, "oMathPara")}:
+                pieces.append(self.math(child))
         return "".join(pieces)
 
     def heading(self, paragraph: etree._Element) -> int | None:
@@ -397,6 +418,8 @@ class _Converter:
             elif child.tag == q(W, "altChunk"):
                 self.warn_once("altchunk", "Обнаружен импортированный блок altChunk, который пока не конвертируется.")
                 value = "[Неподдерживаемый импортированный блок Word]"
+            elif child.tag in {q(M, "oMath"), q(M, "oMathPara")}:
+                value = self.math(child)
             else:
                 value = ""
             if value:
@@ -428,6 +451,28 @@ class _Converter:
                 appendix.append(f"### {label} ({rid})\n\n{content}")
         if appendix:
             md += "\n\n## Колонтитулы\n\n" + "\n\n".join(appendix)
+        for filename, tag, heading in (
+            ("word/footnotes.xml", "footnote", "Сноски"),
+            ("word/endnotes.xml", "endnote", "Концевые сноски"),
+            ("word/comments.xml", "comment", "Комментарии"),
+        ):
+            if filename not in self.names:
+                continue
+            items: list[str] = []
+            for element in self.xml(filename).findall(f"w:{tag}", NS):
+                identifier = attribute(element, "id") or "?"
+                if identifier.startswith("-") or attribute(element, "type") in {"separator", "continuationSeparator"}:
+                    continue
+                content = self.blocks(element, filename)
+                if content:
+                    author = attribute(element, "author") if tag == "comment" else None
+                    title = (f"Комментарий {identifier}" if tag == "comment" else
+                             f"{'Сноска' if tag == 'footnote' else 'Концевая сноска'} {identifier}")
+                    if author:
+                        title += f" — {escape(author)}"
+                    items.append(f"### {title}\n\n{content}")
+            if items:
+                md += f"\n\n## {heading}\n\n" + "\n\n".join(items)
         # Preserve orphaned media too; put their links in an appendix so every
         # extracted image is reachable from index.md even if its original location
         # is not representable (e.g. in a footnote or an unsupported Word object).
@@ -441,12 +486,21 @@ class _Converter:
             md += "\n\n## Дополнительные изображения\n\n" + "\n\n".join(extras)
         if any(name.startswith("word/charts/") for name in self.names):
             self.warn_once("charts", "Найдены диаграммы Word: их данные/редактируемое представление не преобразуются в Markdown (проверьте снимки диаграмм).")
-        if any(name.startswith("word/embeddings/") for name in self.names):
-            self.warn_once("ole", "Найдены встроенные OLE-объекты: они не преобразуются в Markdown.")
-        if "word/footnotes.xml" in self.names or "word/endnotes.xml" in self.names:
-            self.warn_once("notes", "Сноски/концевые сноски не перенесены в Markdown; проверьте оригинал DOCX.")
-        if "word/comments.xml" in self.names:
-            self.warn_once("comments", "Комментарии Word не перенесены в Markdown.")
+        embeddings = sorted(name for name in self.names if name.startswith("word/embeddings/") and not name.endswith("/"))
+        if embeddings:
+            self.warn_once("ole", "Встроенные OLE-объекты сохранены как исходные файлы; их содержимое не преобразовано в Markdown.")
+            directory = self.output / "assets" / "objects"
+            directory.mkdir(parents=True, exist_ok=True)
+            links = []
+            for index, member in enumerate(embeddings, start=1):
+                suffix = Path(member).suffix.lower()
+                if not re.fullmatch(r"\.[a-z0-9]{1,10}", suffix):
+                    suffix = ".bin"
+                relative = f"assets/objects/object{index}{suffix}"
+                (self.output / relative).write_bytes(self.archive.read(member))
+                links.append(f"- [{escape(Path(member).name)}]({relative})")
+                self.log("INFO", f"Сохранён встроенный объект: {member} → {relative}")
+            md += "\n\n## Встроенные объекты Word\n\n" + "\n".join(links)
         if not md.strip():
             self.log("WARN", "В документе не найдено поддерживаемого текстового содержимого.")
             md = "<!-- Нет поддерживаемого текстового содержимого -->"
@@ -461,15 +515,25 @@ def convert_docx(
     source: str | Path,
     output_dir: str | Path | None = None,
     progress: Callable[[str], None] | None = None,
+    *,
+    output_parent: str | Path | None = None,
 ) -> ConversionResult:
-    """Convert once. Never overwrite an existing output directory or source DOCX."""
+    """Convert once. `output_parent` places an auto-named folder inside a chosen directory.
+
+    `output_dir` names an exact new folder. Never overwrite any existing folder.
+    """
     original = Path(source).expanduser().resolve()
     if original.suffix.lower() != ".docx":
         raise ConversionError("Выберите файл с расширением .docx")
     if not original.is_file():
         raise ConversionError(f"Файл не найден: {original}")
+    if output_dir is not None and output_parent is not None:
+        raise ConversionError("Нельзя одновременно указывать output_dir и output_parent")
     if output_dir is None:
-        base = original.with_name(original.stem + "_md")
+        parent = Path(output_parent).expanduser().resolve() if output_parent is not None else original.parent
+        if not parent.is_dir():
+            raise ConversionError(f"Папка для сохранения не найдена: {parent}")
+        base = parent / (original.stem + "_md")
         target = base
         suffix = 2
         while target.exists():

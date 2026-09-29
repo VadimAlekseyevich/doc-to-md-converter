@@ -1,0 +1,45 @@
+name: Сообщить об ошибке
+description: Конвертация DOCX/PDF, установка Windows, контекстное меню или качество результата
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Не публикуйте персональные документы, приватные абсолютные пути или неочищенные логи. Предпочтителен небольшой искусственный пример.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Где проявляется проблема?
+      options:
+        - DOCX → Markdown
+        - PDF → Markdown
+        - start.bat / установка
+        - Контекстное меню Windows
+        - Другое
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как воспроизвести
+      description: Последовательность действий и обезличенный пример, если возможно.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемый и фактический результат
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Версия Windows / Python / релиза
+      placeholder: Windows 11, Python 3.13, v0.2.0
+  - type: textarea
+    id: log
+    attributes:
+      label: Фрагмент ошибки из консоли или conversion.log
+      description: Перед отправкой удалите персональные и конфиденциальные сведения.
+      render: text

@@ -1,0 +1,21 @@
+name: Предложить улучшение
+description: Идеи для DOCX/PDF, установки Windows или качества Markdown
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую задачу нужно решить?
+      description: Ситуация и ожидаемый результат.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Предлагаемое решение
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Альтернативы и примеры
+      description: По возможности используйте обезличенные примеры.

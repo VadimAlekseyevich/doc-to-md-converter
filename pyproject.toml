@@ -21,6 +21,7 @@ dev = ["pytest>=8,<10", "reportlab>=4,<5"]
 [project.scripts]
 docx-to-md = "doc_to_md_converter.cli:main"
 document-to-md = "doc_to_md_converter.cli:main"
+pdf-to-md = "doc_to_md_converter.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["doc_to_md_converter*"]

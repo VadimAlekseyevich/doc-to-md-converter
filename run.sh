@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Bootstrap, install only missing requirements, build editable package and launch.
 set -Eeuo pipefail
+CALLER_CWD="$PWD"
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 
 info() { printf '[setup] %s\n' "$*"; }
@@ -42,7 +43,15 @@ find_python() {
 install_python() {
     info 'Python 3.11+ не обнаружен, пытаюсь установить.'
     if command -v apt-get >/dev/null 2>&1; then
-        install_os_packages python3 python3-venv
+        as_admin apt-get update
+        local minor
+        for minor in 13 12 11; do
+            if apt-cache show "python3.$minor" >/dev/null 2>&1 && apt-cache show "python3.$minor-venv" >/dev/null 2>&1; then
+                as_admin apt-get install -y "python3.$minor" "python3.$minor-venv"
+                return
+            fi
+        done
+        as_admin apt-get install -y python3 python3-venv
     elif command -v dnf >/dev/null 2>&1; then
         install_os_packages python3
     elif command -v brew >/dev/null 2>&1; then
@@ -58,13 +67,18 @@ if [[ -z "$PYTHON" ]]; then
     PYTHON="$(find_python || true)"
     [[ -n "$PYTHON" ]] || fail 'Пакетный менеджер не предоставил Python 3.11+. Установите совместимую версию вручную.'
 fi
-info "Используется $($PYTHON --version) ($PYTHON)"
+info "Используется $("$PYTHON" --version) ($PYTHON)"
 
 if [[ ! -x .venv/bin/python ]] || ! .venv/bin/python -c 'import sys; sys.exit(sys.version_info < (3, 11))' >/dev/null 2>&1; then
     info 'Создаю локальное окружение .venv (с доступом к уже установленным пакетам).'
     if ! "$PYTHON" -m venv --system-site-packages .venv; then
         if command -v apt-get >/dev/null 2>&1; then
-            install_os_packages python3-venv
+            venv_pkg="$($PYTHON -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}-venv")')"
+            if apt-cache show "$venv_pkg" >/dev/null 2>&1; then
+                install_os_packages "$venv_pkg"
+            else
+                install_os_packages python3-venv
+            fi
             "$PYTHON" -m venv --system-site-packages .venv || fail 'Не удалось создать .venv (для отдельных версий Python нужен пакет python3.X-venv).'
         else
             fail 'Не удалось создать .venv; установите модуль venv для используемого Python.'
@@ -75,7 +89,8 @@ VENV_PYTHON="$PWD/.venv/bin/python"
 # A nested venv does not inherit its parent's site-packages, even with
 # --system-site-packages. Reuse packages from an already active Python venv
 # instead of downloading the same wheels again.
-if "$PYTHON" -c 'import sys; sys.exit(0 if sys.prefix != sys.base_prefix else 1)' >/dev/null 2>&1; then
+if "$PYTHON" -c 'import sys; sys.exit(0 if sys.prefix != sys.base_prefix else 1)' >/dev/null 2>&1 &&
+   [[ "$($PYTHON -c 'import sys; print(sys.version_info[:2])')" == "$($VENV_PYTHON -c 'import sys; print(sys.version_info[:2])')" ]]; then
     local_site="$($VENV_PYTHON -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
     "$PYTHON" -c 'import site, sys, os; print("\n".join(p for p in site.getsitepackages() if os.path.isdir(p) and os.path.commonpath([os.path.realpath(p), os.path.realpath(sys.prefix)]) == os.path.realpath(sys.prefix)))' > "$local_site/_preexisting_venv.pth"
     info 'Использую также уже установленные библиотеки исходного Python-окружения.'
@@ -121,4 +136,5 @@ if (( $# == 0 )); then
     fi
 fi
 info 'Запускаю конвертер.'
+cd -- "$CALLER_CWD"  # CLI path arguments remain relative to the launching shell.
 exec "$VENV_PYTHON" -m doc_to_md_converter "$@"

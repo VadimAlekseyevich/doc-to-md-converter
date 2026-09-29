@@ -13,8 +13,13 @@ def _notify_context_result(title: str, message: str, *, error: bool = False) -> 
     try:
         import tkinter as tk
         from tkinter import messagebox
+    except ImportError as exc:
+        print(f"{title}: {message} (диалог недоступен: {exc})",
+              file=sys.stderr if error else sys.stdout)
+        return
+    try:
         root = tk.Tk()
-    except (ImportError, tk.TclError) as exc:
+    except tk.TclError as exc:
         print(f"{title}: {message} (диалог недоступен: {exc})",
               file=sys.stderr if error else sys.stdout)
         return
